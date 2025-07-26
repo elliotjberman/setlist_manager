@@ -1,0 +1,13 @@
+{
+  "filewatcher.autoClearConsole": true,
+  "filewatcher.isClearStatusBar": false,
+  "filewatcher.successTextColor": "#00ff00",
+  "filewatcher.runTextColor": "#ffff00",
+  "filewatcher.commands": [
+    {
+      "match": "setlist\\.json$",
+      "cmd": "python ${workspaceRoot}\\validate_paths.py",
+      "event": "onFileChange"
+    }
+  ]
+}
