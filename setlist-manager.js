@@ -56,6 +56,7 @@ function loadjson(filepath) {
             outlet(1, "error: no valid serverPort specified in JSON");
             return;
         }
+        setport(setlistData.serverPort);
         
         // Output success status
         outlet(1, "loaded: " + absolutePath);
