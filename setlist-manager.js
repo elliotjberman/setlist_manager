@@ -6,7 +6,6 @@ outlets = 2; // outlet 0 for data, outlet 1 for status/errors
 
 var storedPath = "";
 var setlistData = null;
-var serverPort = 8080; // default port, will be overridden from JSON
 
 // Consts, but there's no const
 var NEXT = "next";
@@ -78,7 +77,15 @@ function path(_, filepath) {
         var currentIndex = findCurrentSetIndex(currentSetName, data);
         if (currentIndex !== -1) {
             post("current set index: " + currentIndex);
-            outlet(0, ["text", currentIndex]);
+            
+            // Calculate next set index and get its name for display
+            var nextIndex = currentIndex + 1;
+            if (nextIndex >= data.sets.length) {
+                outlet(0, ["text", "NO NEXT SET"])
+            }
+
+            var nextSetName = extractSetName(data.sets[nextIndex].path);
+            outlet(0, ["text", nextSetName]);
         } else {
             post("current set not found in setlist");
             outlet(1, "warning: current set not found in setlist");
@@ -186,9 +193,8 @@ function navigate(direction) {
     }
     
     var nextSetPath = setlistData.sets[newIndex].path;
-    var nextSetName = setlistData.sets[newIndex].name || "Unknown";
     
-    outlet(1, "navigating to: " + nextSetName + " (index " + newIndex + ")");
+    outlet(1, "navigating to: " + nextSetPath + " (index " + newIndex + ")");
     
     // Send to server instead of direct loading
     sendToServer(nextSetPath, newIndex);
@@ -207,4 +213,46 @@ function prev() {
 function setport(port) {
     serverPort = port;
     outlet(1, "server port manually set to: " + serverPort);
+}
+
+// Helper function to extract set name from file path
+// Works with both forward and back slashes, removes file extension
+// And again, can't use lastIndexOf and similar things because M4L
+// uses some ancient ES interpreter
+function extractSetName(filePath) {
+    if (!filePath) {
+        return "Unknown";
+    }
+    
+    var filename = filePath;
+    
+    // Find the last slash (either / or \) manually
+    var lastSlashIndex = -1;
+    for (var i = filePath.length - 1; i >= 0; i--) {
+        if (filePath.charAt(i) === '/' || filePath.charAt(i) === '\\') {
+            lastSlashIndex = i;
+            break;
+        }
+    }
+    
+    // Extract filename (everything after the last slash)
+    if (lastSlashIndex !== -1) {
+        filename = filePath.substring(lastSlashIndex + 1);
+    }
+    
+    // Remove file extension (everything after the last dot) manually
+    var lastDotIndex = -1;
+    for (var i = filename.length - 1; i >= 0; i--) {
+        if (filename.charAt(i) === '.') {
+            lastDotIndex = i;
+            break;
+        }
+    }
+    
+    var nameWithoutExtension = filename;
+    if (lastDotIndex !== -1) {
+        nameWithoutExtension = filename.substring(0, lastDotIndex);
+    }
+    
+    return nameWithoutExtension;
 }
