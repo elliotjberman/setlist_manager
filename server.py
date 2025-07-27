@@ -12,6 +12,14 @@ class Handler(BaseHTTPRequestHandler):
         try:
             data = json.loads(self.rfile.read(content_length))
             file_path = data['path']
+            # Use basePath from setlist.json if present and file_path is not absolute
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            setlist_path = os.path.join(script_dir, 'setlist.json')
+            with open(setlist_path, 'r') as f:
+                setlist = json.load(f)
+            base_path = setlist.get('basePath')
+            if base_path and not os.path.isabs(file_path):
+                file_path = os.path.join(base_path, file_path)
             if not os.path.isfile(file_path):
                 print(f"Error: File not found - {file_path}")
                 self.send_response(404)

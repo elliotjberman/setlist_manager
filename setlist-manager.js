@@ -6,6 +6,7 @@ outlets = 2; // outlet 0 for data, outlet 1 for status/errors
 
 var storedPath = "";
 var setlistData = null;
+var basePath = null; // Store basePath if present
 
 // Consts, but there's no const
 var NEXT = "next";
@@ -50,7 +51,9 @@ function loadjson(filepath) {
         
         // Parse JSON
         setlistData = JSON.parse(fileContent);
-        
+        // Store basePath if present
+        basePath = setlistData.basePath !== undefined ? setlistData.basePath : null;
+
         // Extract server port - required
         if (setlistData.serverPort === undefined) {
             outlet(1, "error: no valid serverPort specified in JSON");
@@ -126,6 +129,17 @@ function findCurrentSetIndex(currentSetName, setlistData) {
     return -1; // Not found
 }
 
+// Helper to resolve set path using basePath if present
+function resolveSetPath(path) {
+    // If path is absolute, return as is
+    if (!basePath || path.indexOf('/') === 0 || path.indexOf(':') !== -1) {
+        return path;
+    }
+    // Otherwise, join basePath and path (manual join for M4L compatibility)
+    var sep = basePath.charAt(basePath.length - 1) === '/' || basePath.charAt(basePath.length - 1) === '\\' ? '' : '/';
+    return basePath + sep + path;
+}
+
 // Function to send HTTP request to local server
 function sendToServer(setPath, setIndex) {
     post("SENDING")
@@ -133,7 +147,7 @@ function sendToServer(setPath, setIndex) {
         // Create the request data
         var requestData = {
             "action": "load_set",
-            "path": setPath,
+            "path": resolveSetPath(setPath),
             "index": setIndex
         };
         

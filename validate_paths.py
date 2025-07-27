@@ -19,11 +19,18 @@ def main():
     with open(setlist_file, "r") as f:
         data = json.load(f)
     sets = data.get("sets", [])
+    base_path = data.get("basePath")
     missing = []
     for s in sets:
         path = s.get("path")
-        if path and not os.path.exists(path):
-            missing.append(path)
+        if path:
+            # If path is not absolute and base_path is set, join them
+            if base_path and not os.path.isabs(path):
+                abs_path = os.path.join(base_path, path)
+            else:
+                abs_path = path
+            if not os.path.exists(abs_path):
+                missing.append(abs_path)
     if missing:
         print("VALIDATION FAILED")
         for path in missing:
