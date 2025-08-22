@@ -6,7 +6,8 @@ outlets = 2; // outlet 0 for data, outlet 1 for status/errors
 
 var storedPath = "";
 var setlistData = null;
-var basePath = null; // Store basePath if present
+var basePath = null; // Loaded from config.json
+var serverPort = null; // Loaded from config.json
 
 // Consts, but there's no const
 var NEXT = "next";
@@ -15,11 +16,9 @@ var PREV = "prev";
 function loadjson(filepath) {
     try {
         var absolutePath = filepath;
-        
         // If it's just a filename (no path separators), look in the same directory as this JS file
         if (filepath.indexOf('/') === -1 && filepath.indexOf('\\') === -1) {
             try {
-                // Get the directory where this JS file is located
                 var jsFilePath = this.patcher.filepath;
                 var jsDir = jsFilePath.substring(0, jsFilePath.lastIndexOf('/'));
                 absolutePath = jsDir + "/" + filepath;
@@ -27,67 +26,81 @@ function loadjson(filepath) {
                 outlet(1, "couldn't get patcher path: " + e.message);
             }
         }
-        
         // Use Max's File object to read the file
-        const file = new File(absolutePath, "read");
-        
+        var file = new File(absolutePath, "read");
         if (!file.isopen) {
             outlet(1, "error: couldn't open file - " + absolutePath);
             return;
         }
-        
-        // Read the entire file
         var fileContent = "";
         var line;
         while ((line = file.readline()) !== null) {
             fileContent += line;
         }
         file.close();
-        
         if (fileContent === "") {
             outlet(1, "error: file is empty - " + absolutePath);
             return;
         }
-        
-        // Parse JSON
         setlistData = JSON.parse(fileContent);
-        // Store basePath if present
-        basePath = setlistData.basePath !== undefined ? setlistData.basePath : null;
-
-        // Extract server port - required
-        if (setlistData.serverPort === undefined) {
-            outlet(1, "error: no valid serverPort specified in JSON");
-            return;
-        }
-        setport(setlistData.serverPort);
-        
-        // Output success status
         outlet(1, "loaded: " + absolutePath);
         return setlistData;
-        
     } catch (e) {
         outlet(1, "error: " + e.message);
     }
 }
 
+// Load config.json for basePath and serverPort
+function loadconfig() {
+    try {
+        var jsFilePath = this.patcher.filepath;
+        var jsDir = jsFilePath.substring(0, jsFilePath.lastIndexOf('/'));
+        var configPath = jsDir + "/config.json";
+        var file = new File(configPath, "read");
+        if (!file.isopen) {
+            outlet(1, "error: couldn't open config.json - " + configPath);
+            return;
+        }
+        var fileContent = "";
+        var line;
+        while ((line = file.readline()) !== null) {
+            fileContent += line;
+        }
+        file.close();
+        if (fileContent === "") {
+            outlet(1, "error: config.json is empty - " + configPath);
+            return;
+        }
+        var config = JSON.parse(fileContent);
+        basePath = config.basePath !== undefined ? config.basePath : null;
+        serverPort = config.serverPort !== undefined ? config.serverPort : null;
+        if (serverPort === null) {
+            outlet(1, "error: no valid serverPort specified in config.json");
+        } else {
+            setport(serverPort);
+        }
+        outlet(1, "config loaded: " + configPath);
+        return config;
+    } catch (e) {
+        outlet(1, "error loading config: " + e.message);
+    }
+}
+
 function path(_, filepath) {
+    // Always load config first
+    loadconfig();
     var currentSetName = currentSet();
     post("current set: " + currentSetName + "\n");
-    
     storedPath = filepath;
     var data = loadjson(filepath);
-    
     if (data && currentSetName) {
         var currentIndex = findCurrentSetIndex(currentSetName, data);
         if (currentIndex !== -1) {
             post("current set index: " + currentIndex);
-            
-            // Calculate next set index and get its name for display
             var nextIndex = currentIndex + 1;
             if (nextIndex >= data.sets.length) {
                 outlet(0, ["text", "NO NEXT SET"])
             }
-
             var nextSetName = extractSetName(data.sets[nextIndex].path);
             outlet(0, ["text", nextSetName]);
         } else {
@@ -129,13 +142,11 @@ function findCurrentSetIndex(currentSetName, setlistData) {
     return -1; // Not found
 }
 
-// Helper to resolve set path using basePath if present
+// Helper to resolve set path using basePath from config.json
 function resolveSetPath(path) {
-    // If path is absolute, return as is
     if (!basePath || path.indexOf('/') === 0 || path.indexOf(':') !== -1) {
         return path;
     }
-    // Otherwise, join basePath and path (manual join for M4L compatibility)
     var sep = basePath.charAt(basePath.length - 1) === '/' || basePath.charAt(basePath.length - 1) === '\\' ? '' : '/';
     return basePath + sep + path;
 }
@@ -156,7 +167,7 @@ function sendToServer(setPath, setIndex) {
         
         // Use Max's http object to send POST request
         var httpRequest = new XMLHttpRequest();
-        var url = "http://localhost:" + serverPort + "/load-set";
+    var url = "http://localhost:" + serverPort + "/load-set";
         
         httpRequest.open("POST", url, true);
         httpRequest.setRequestHeader("Content-Type", "application/json");

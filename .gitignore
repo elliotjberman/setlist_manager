@@ -208,4 +208,6 @@ __marimo__/
 
 # Setlist specific stuff
 setlist.json
+config.json
+old_sets/
 Ableton Folder Info/

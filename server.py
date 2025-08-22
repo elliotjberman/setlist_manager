@@ -14,12 +14,12 @@ class Handler(BaseHTTPRequestHandler):
         try:
             data = json.loads(self.rfile.read(content_length))
             file_path = data['path']
-            # Use basePath from setlist.json if present and file_path is not absolute
+            # Use basePath from config.json if present and file_path is not absolute
             script_dir = os.path.dirname(os.path.abspath(__file__))
-            setlist_path = os.path.join(script_dir, 'setlist.json')
-            with open(setlist_path, 'r') as f:
-                setlist = json.load(f)
-            base_path = setlist.get('basePath')
+            config_path = os.path.join(script_dir, 'config.json')
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+            base_path = config.get('basePath')
             if base_path and not os.path.isabs(file_path):
                 file_path = os.path.join(base_path, file_path)
             if not os.path.isfile(file_path):
@@ -61,11 +61,22 @@ def ensure_ableton_session_open(setlist):
         traceback.print_exc()
 
     if not ableton_running:
+        # Load config.json for basePath
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        config_path = os.path.join(script_dir, 'config.json')
+        try:
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+            base_path = config.get('basePath')
+        except Exception as e:
+            print(f"Error loading config.json: {e}")
+            traceback.print_exc()
+            base_path = None
+
         sets = setlist.get("sets")
         if sets and isinstance(sets, list) and len(sets) > 0:
             first_set = sets[0]
             file_path = first_set.get("path")
-            base_path = setlist.get("basePath")
             if file_path:
                 if base_path and not os.path.isabs(file_path):
                     file_path = os.path.join(base_path, file_path)
@@ -84,9 +95,20 @@ def ensure_ableton_session_open(setlist):
             print("No sets found in setlist.json")
 
 def main():
-    # Load from setlist.json in the same directory as the script itself, not caller, and use the serverPort field on the object
+    # Load config.json for basePath and serverPort, and setlist.json for setlist data
     script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(script_dir, 'config.json')
     setlist_path = os.path.join(script_dir, 'setlist.json')
+    try:
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+    except FileNotFoundError:
+        print(f"Error: config.json not found at {config_path}")
+        return
+    except Exception as e:
+        print(f"Error loading config.json: {e}")
+        traceback.print_exc()
+        return
     try:
         with open(setlist_path, 'r') as f:
             setlist = json.load(f)
@@ -97,9 +119,9 @@ def main():
         print(f"Error loading setlist.json: {e}")
         traceback.print_exc()
         return
-    port = setlist.get('serverPort')
+    port = config.get('serverPort')
     if not isinstance(port, int):
-        print("Error: serverPort missing or not an integer in setlist.json")
+        print("Error: serverPort missing or not an integer in config.json")
         return
 
     ensure_ableton_session_open(setlist)
