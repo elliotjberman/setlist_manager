@@ -1,13 +1,12 @@
 @echo off
-REM Ableton Set Manager - Start HTTP Server with Environment Setup
-REM Place this file in the same directory as server.py and setlist.json
+REM Ableton Set Manager - Windows server launcher
 
 echo Starting Ableton Set Manager...
 
-REM Switch to script directory
-cd /d "%~dp0"
+REM Switch to repository root.
+cd /d "%~dp0.."
 
-REM Check if virtual environment exists, create if not
+REM Check if virtual environment exists, create if not.
 if not exist "venv" (
     echo Creating virtual environment...
     python -m venv venv
@@ -19,7 +18,6 @@ if not exist "venv" (
     echo Virtual environment created successfully.
 )
 
-REM Activate virtual environment
 echo Activating virtual environment...
 call venv\Scripts\activate.bat
 if errorlevel 1 (
@@ -28,18 +26,19 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM Check if requirements are installed
 echo Checking dependencies...
-python -c "import pyautogui, psutil" 2>nul
+python -c "import psutil, win32api, win32con, win32gui" 2>nul
 if errorlevel 1 (
     echo Installing required packages...
-    if exist "requirements.txt" (
-        pip install -r requirements.txt
-    ) else (
-        pip install pyautogui psutil pywin32
-    )
+    pip install -r requirements.txt
     if errorlevel 1 (
-        echo ERROR: Failed to install dependencies.
+        echo ERROR: Failed to install shared dependencies.
+        pause
+        exit /b 1
+    )
+    pip install -r windows\requirements.txt
+    if errorlevel 1 (
+        echo ERROR: Failed to install Windows dependencies.
         pause
         exit /b 1
     )
@@ -48,11 +47,9 @@ if errorlevel 1 (
     echo Dependencies already installed.
 )
 
-REM Start the server
 echo Starting server...
 python server.py
 
-REM Deactivate virtual environment when done
 deactivate
 
 echo Server stopped. Press any key to close...
