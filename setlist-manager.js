@@ -7,6 +7,7 @@ outlets = 2; // outlet 0 for data, outlet 1 for status/errors
 var storedPath = "";
 var setlistData = null;
 var basePath = null; // Store basePath if present
+var serverPort = null;
 
 // Consts, but there's no const
 var NEXT = "next";
@@ -29,7 +30,7 @@ function loadjson(filepath) {
         }
         
         // Use Max's File object to read the file
-        const file = new File(absolutePath, "read");
+        var file = new File(absolutePath, "read");
         
         if (!file.isopen) {
             outlet(1, "error: couldn't open file - " + absolutePath);
@@ -85,7 +86,8 @@ function path(_, filepath) {
             // Calculate next set index and get its name for display
             var nextIndex = currentIndex + 1;
             if (nextIndex >= data.sets.length) {
-                outlet(0, ["text", "NO NEXT SET"])
+                outlet(0, ["text", "NO NEXT SET"]);
+                return;
             }
 
             var nextSetName = extractSetName(data.sets[nextIndex].path);
@@ -101,7 +103,7 @@ function path(_, filepath) {
 // N.B - if you have a set with two .als's that have the same name, you're fucked
 function currentSet() {
     try {
-        const liveSet = new LiveAPI("live_set");
+        var liveSet = new LiveAPI("live_set");
         return liveSet.get("name");
     } catch (e) {
         outlet(1, "error getting current set: " + e.message);
