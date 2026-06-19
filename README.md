@@ -22,13 +22,15 @@ Example structure:
 
 - **sets**: List of objects, each with a `"path"` to an Ableton `.als` file. Paths can be absolute or relative.
 - **serverPort**: Port number for the local server. The client and server side both read this value.
+- **udpPort** (optional): UDP fire-and-forget port for the M4L device. Defaults to `serverPort`.
 - **basePath** (optional): If present, all relative `"path"` entries will be resolved relative to this directory.
 
 ## Code Structure
 
 - The Max for Live (M4L) device uses JavaScript, but only supports some insane version of ECMAScript (shit/non-existent standard library, no `let`, `const`, etc).
 - M4L scripts also can't launch new Ableton sets themselves, or get the path of the current set running (???).
-- To work around this, a Python server (`server.py`) runs locally and handles file operations and launching sets. The M4L JS client communicates with this server over HTTP.
+- To work around this, a Python server (`server.py`) runs locally and handles file operations and launching sets. The M4L JS client sends fire-and-forget UDP messages to this server. HTTP remains available for `/status` and debugging.
+- UDP-triggered opens wait one second by default before asking Ableton to load the next set. Override with `SETLIST_UDP_OPEN_DELAY=0` if you need the old immediate behavior.
 - Platform-specific behavior is isolated behind `platform_adapters.py`.
 - Windows-specific code lives in `windows/`, including the Win32 save dialog handler and launcher.
 - macOS-specific code lives in `macos/`, including an on-demand save prompt handler that sends Ableton's "Don't Save" keyboard shortcut after opening the next set.
@@ -54,7 +56,7 @@ Ableton does not always expose its save prompt as a normal Accessibility dialog 
 
 On Windows, run `windows/server_start.bat`. It installs the shared dependencies plus `windows/requirements.txt`.
 
-The server also exposes `GET /status` for dashboards. It returns JSON with `ok`, `serverPort`, `basePath`, `sets`, `current_index`, and `current_path`. If `setlist.json` is missing, the server falls back to port `8000` so `/status` can report the problem cleanly.
+The server also exposes `GET /status` for dashboards. It returns JSON with `ok`, `serverPort`, `udpPort`, `basePath`, `sets`, `current_index`, and `current_path`. If `setlist.json` is missing, the server falls back to port `8000` so `/status` can report the problem cleanly.
 
 **Tips:**
 - Make sure all paths exist; use `validate_paths.py` to check.

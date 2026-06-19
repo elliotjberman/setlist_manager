@@ -8,6 +8,12 @@ var storedPath = "";
 var setlistData = null;
 var basePath = null; // Store basePath if present
 var serverPort = null;
+var udpPort = null;
+var udpSender = null;
+var udpSenderPort = null;
+var SCRIPT_VERSION = "udp-fire-and-forget-2026-06-18";
+
+post("setlist-manager.js loaded: " + SCRIPT_VERSION + "\n");
 
 // Consts, but there's no const
 var NEXT = "next";
@@ -61,6 +67,11 @@ function loadjson(filepath) {
             return;
         }
         setport(setlistData.serverPort);
+        if (setlistData.udpPort !== undefined) {
+            setudpport(setlistData.udpPort);
+        } else {
+            setudpport(setlistData.serverPort);
+        }
         
         // Output success status
         outlet(1, "loaded: " + absolutePath);
@@ -131,52 +142,64 @@ function findCurrentSetIndex(currentSetName, setlistData) {
     return -1; // Not found
 }
 
-// Helper to resolve set path using basePath if present
-function resolveSetPath(path) {
-    // If path is absolute, return as is
-    if (!basePath || path.indexOf('/') === 0 || path.indexOf(':') !== -1) {
-        return path;
+function ensureUdpSender() {
+    if (udpPort === null) {
+        outlet(1, "error: no UDP port configured");
+        return null;
     }
-    // Otherwise, join basePath and path (manual join for M4L compatibility)
-    var sep = basePath.charAt(basePath.length - 1) === '/' || basePath.charAt(basePath.length - 1) === '\\' ? '' : '/';
-    return basePath + sep + path;
+
+    if (udpSender && udpSender.valid && udpSenderPort === udpPort) {
+        return udpSender;
+    }
+
+    try {
+        udpSender = this.patcher.newdefault(20, 20, "udpsend", "127.0.0.1", udpPort);
+        udpSender.hidden = 1;
+        udpSender.ignoreclick = 1;
+        udpSenderPort = udpPort;
+        post("created udpsend 127.0.0.1:" + udpPort + "\n");
+        return udpSender;
+    } catch (e) {
+        outlet(1, "error creating udpsend: " + e.message);
+        return null;
+    }
 }
 
-// Function to send HTTP request to local server
-function sendToServer(setPath, setIndex) {
-    post("SENDING")
+function sendUdpRawBytes(payload) {
+    var sender = ensureUdpSender();
+    if (!sender) {
+        return false;
+    }
+
+    var args = ["rawbytes"];
+    for (var i = 0; i < payload.length; i++) {
+        var code = payload.charCodeAt(i);
+        if (code > 255) {
+            throw new Error("UDP payload contains non-byte character at " + i);
+        }
+        args[args.length] = code;
+    }
+
+    sender.message.apply(sender, args);
+    return true;
+}
+
+// Function to send a UDP fire-and-forget request to the local server.
+function sendToServer(setIndex) {
+    post("SENDING UDP\n");
     try {
-        // Create the request data
         var requestData = {
-            "action": "load_set",
-            "path": resolveSetPath(setPath),
+            "action": "load_index",
             "index": setIndex
         };
         
-        // Convert to JSON string
         var jsonData = JSON.stringify(requestData);
-        
-        // Use Max's http object to send POST request
-        var httpRequest = new XMLHttpRequest();
-        var url = "http://localhost:" + serverPort + "/load-set";
-        
-        httpRequest.open("POST", url, true);
-        httpRequest.setRequestHeader("Content-Type", "application/json");
-        
-        httpRequest.onreadystatechange = function() {
-            if (httpRequest.readyState === 4) {
-                if (httpRequest.status === 200) {
-                    outlet(1, "server request successful: " + httpRequest.responseText);
-                    outlet(1, ["server_response", "success", setPath]);
-                } else {
-                    outlet(1, "server request failed: " + httpRequest.status + " " + httpRequest.statusText);
-                    outlet(1, ["server_response", "error", httpRequest.status]);
-                }
-            }
-        };
-        
-        httpRequest.send(jsonData);
-        outlet(1, "sending request to server: " + url);
+
+        if (!sendUdpRawBytes(jsonData)) {
+            throw new Error("UDP send failed");
+        }
+
+        outlet(1, "udp request sent to server: 127.0.0.1:" + udpPort + " index " + setIndex);
         
     } catch (e) {
         outlet(1, "error sending to server: " + e.message);
@@ -213,8 +236,7 @@ function navigate(direction) {
     
     outlet(1, "navigating to: " + nextSetPath + " (index " + newIndex + ")");
     
-    // Send to server instead of direct loading
-    sendToServer(nextSetPath, newIndex);
+    sendToServer(newIndex);
 }
 
 // Message handlers
@@ -230,6 +252,11 @@ function prev() {
 function setport(port) {
     serverPort = port;
     outlet(1, "server port manually set to: " + serverPort);
+}
+
+function setudpport(port) {
+    udpPort = port;
+    outlet(1, "udp port manually set to: " + udpPort);
 }
 
 // Helper function to extract set name from file path

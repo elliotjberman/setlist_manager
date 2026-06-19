@@ -12,16 +12,47 @@ import subprocess
 import time
 
 
-DISCARD_AFTER_OPEN_DELAY = 0.25
+DISCARD_DIALOG_GRACE_SECONDS = 4.0
 
 
 DISCARD_DIALOG_SCRIPT = r'''
+on hasSaveDialog(abletonProcess)
+    tell application "System Events"
+        tell abletonProcess
+            repeat with candidateWindow in windows
+                set roleName to ""
+                set subroleName to ""
+                set windowName to ""
+
+                try
+                    set roleName to role of candidateWindow as text
+                end try
+                try
+                    set subroleName to subrole of candidateWindow as text
+                end try
+                try
+                    set windowName to name of candidateWindow as text
+                end try
+
+                if roleName is "AXSheet" or roleName is "AXDialog" then return true
+                if subroleName is "AXSheet" or subroleName is "AXDialog" then return true
+                if windowName contains "Save" or windowName contains "save" then return true
+            end repeat
+        end tell
+    end tell
+
+    return false
+end hasSaveDialog
+
 on run
     tell application "System Events"
         set abletonProcesses to every process whose name is "Live" or name contains "Ableton Live"
-        if (count of abletonProcesses) is 0 then return ""
+        if (count of abletonProcesses) is 0 then return "no_live"
 
-        set frontmost of item 1 of abletonProcesses to true
+        set abletonProcess to item 1 of abletonProcesses
+        if my hasSaveDialog(abletonProcess) is false then return "no_dialog"
+
+        set frontmost of abletonProcess to true
         delay 0.15
 
         -- Ableton's custom prompt does not expose labeled buttons through
@@ -32,6 +63,7 @@ on run
         key code 123
         delay 0.05
         key code 36
+        return "sent"
     end tell
 end run
 '''
@@ -48,7 +80,7 @@ class AbletonSaveDialogHandler:
         pass
 
     def discard_save_dialog(self) -> bool:
-        return self.run_osascript(DISCARD_DIALOG_SCRIPT) is not None
+        return self.run_osascript(DISCARD_DIALOG_SCRIPT) == "sent"
 
     def run_osascript(self, script):
         try:
@@ -70,16 +102,25 @@ class AbletonSaveDialogHandler:
 
         return result.stdout.strip()
 
-    def handle_after_open(self, timeout: float = 5.0) -> bool:
+    def handle_after_open(self, timeout: float = DISCARD_DIALOG_GRACE_SECONDS) -> bool:
         if self.reported_accessibility_error or timeout <= 0:
             return False
 
-        time.sleep(min(DISCARD_AFTER_OPEN_DELAY, timeout))
-        if not self.discard_save_dialog():
-            return False
+        # Ableton's custom prompt is not reliably inspectable, so spend one
+        # short window sending the discard shortcut while it is likely to appear.
+        attempt_interval_seconds = 0.35
+        deadline = time.monotonic() + timeout
+        sent = False
+        while time.monotonic() <= deadline and not self.reported_accessibility_error:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(attempt_interval_seconds, remaining))
+            if self.discard_save_dialog():
+                sent = True
+                print("Sent macOS save-dialog discard shortcut")
 
-        print("Sent macOS save-dialog discard shortcut")
-        return True
+        return sent
 
     def report_automation_error(self, message: str):
         if self.reported_accessibility_error:
